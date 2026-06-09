@@ -1,0 +1,24 @@
+{
+  "name": "xynq-worker",
+  "version": "0.4.2",
+  "private": true,
+  "description": "XYNQ contributor worker — serve inference from your idle GPU and earn $XYNQ.",
+  "bin": {
+    "xynq-worker": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "ollama": "^0.5.11",
+    "socket.io-client": "^4.8.1",
+    "systeminformation": "^5.23.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
