@@ -1,0 +1,19 @@
+[toolchain]
+anchor_version = "0.30.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.mainnet]
+xynq_staking = "Stake111111111111111111111111111111111111111"
+
+[programs.devnet]
+xynq_staking = "Stake111111111111111111111111111111111111111"
+
+[provider]
+cluster = "Mainnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "tsx tests/staking.test.ts"
