@@ -1,0 +1,12 @@
+# Railway / Nixpacks build configuration for the XYNQ web + orchestrator.
+[phases.setup]
+nixPkgs = ["nodejs_20", "python3", "gcc"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run dev:all"
