@@ -57,8 +57,32 @@ export async function ensureModelPulled(model: string): Promise<void> {
   const tag = mapModel(model);
   try {
     await ollama.show({ model: tag });
+    return; // already present
   } catch {
-    console.log(`[worker] pulling ${tag} …`);
-    await ollama.pull({ model: tag });
+    // not present — pull below
+  }
+
+  console.log(`[worker] pulling ${tag} (first run downloads several GB, this can take a few minutes)…`);
+  const gb = (n?: number) => ((n ?? 0) / 1e9).toFixed(2);
+  let lastPct = -1;
+  try {
+    const stream = await ollama.pull({ model: tag, stream: true });
+    for await (const ev of stream as AsyncIterable<{ status?: string; total?: number; completed?: number }>) {
+      if (ev.total && ev.completed) {
+        const pct = Math.floor((ev.completed / ev.total) * 100);
+        if (pct !== lastPct) {
+          lastPct = pct;
+          process.stdout.write(`\r[worker] ${tag}: ${pct}%  (${gb(ev.completed)}/${gb(ev.total)} GB)        `);
+        }
+      } else if (ev.status && lastPct < 0) {
+        process.stdout.write(`\r[worker] ${tag}: ${ev.status}        `);
+      }
+    }
+    process.stdout.write("\n");
+    console.log(`[worker] ${tag} ready`);
+  } catch (err) {
+    process.stdout.write("\n");
+    console.error(`[worker] failed to pull ${tag}: ${String(err)}`);
+    throw err;
   }
 }
