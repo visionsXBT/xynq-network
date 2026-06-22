@@ -4,6 +4,10 @@ import si from "systeminformation";
 import { makeWorkerId, type FromServer, type ToServer, type WorkerHello } from "./protocol.js";
 import { serveChat, ensureModelPulled } from "./native.js";
 
+// Production coordinator. Replace with your Railway domain before publishing,
+// or override at runtime with --orch / XYNQ_ORCH.
+const DEFAULT_ORCH = "https://xynq-network-production.up.railway.app";
+
 interface Args {
   wallet: string;
   orch: string;
@@ -23,7 +27,7 @@ function parseArgs(argv: string[]): Args {
   }
   return {
     wallet,
-    orch: get("--orch") ?? process.env.XYNQ_ORCH ?? "http://localhost:8787",
+    orch: get("--orch") ?? process.env.XYNQ_ORCH ?? DEFAULT_ORCH,
     models: get("--models")?.split(","),
     maxVram: get("--max-vram") ? Number(get("--max-vram")) : undefined,
   };

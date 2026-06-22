@@ -1,16 +1,29 @@
 {
-  "name": "xynq-worker",
+  "name": "@xynq/worker",
   "version": "0.4.2",
-  "private": true,
-  "description": "XYNQ contributor worker — serve inference from your idle GPU and earn $XYNQ.",
+  "description": "XYNQ contributor worker — serve inference from your idle GPU and earn USDC.",
   "bin": {
     "xynq-worker": "dist/index.js"
   },
   "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/visionsXBT/xynq-network.git",
+    "directory": "xynq-worker"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "ollama": "^0.5.11",
