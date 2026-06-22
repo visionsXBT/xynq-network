@@ -22,6 +22,7 @@ function mk(
 ): WorkerInfo {
   return {
     id,
+    wallet: `DEV${id}`, // local-dev placeholder; real workers report a Solana address
     kind,
     models,
     vramMb,

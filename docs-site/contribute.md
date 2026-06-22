@@ -1,51 +1,89 @@
 # Contribute Compute
 
 If your machine has a GPU that spends most of the day idle, you can lend that
-idle time to XYNQ and get paid in $XYNQ for the tokens it produces. The worker
-only ever runs when your card would otherwise be doing nothing, and it hands the
-GPU straight back the moment you need it.
+idle time to XYNQ and get paid for the tokens it produces. The worker connects to
+the coordinator, serves inference jobs from your GPU, and reports how many tokens
+it produced so you can be paid for the work.
 
-## Option A — native (best throughput)
+> **Status: early MVP.** The native worker, the coordinator, and token accounting
+> are functional today. Rewards are settled **manually in USDC on Solana** by the
+> operator from the ledger (see *What you earn* below) while the automated keeper
+> is finished. The browser (WebGPU) worker is still in development.
 
-Install [Ollama](https://ollama.com), then start the worker with the wallet you
-want rewards sent to:
+## Run a native worker
+
+You need [Ollama](https://ollama.com) installed and at least one model pulled
+(e.g. `ollama pull llama3.1:8b`), plus Node.js 20+.
+
+From the repo:
 
 ```bash
-npx xynq-worker --wallet <YOUR_SOLANA_ADDRESS>
+cd xynq-worker
+npm install
+npm run build
+npm start -- \
+  --wallet <YOUR_SOLANA_ADDRESS> \
+  --orch  <COORDINATOR_URL> \
+  --models jaguar
 ```
 
-On first run it fingerprints your GPU, joins the coordinator, pulls whatever
-model band it's assigned, and begins serving. Leave it running in the background;
-it backs off automatically whenever you start using the GPU yourself.
+- `--wallet` — the Solana address your USDC rewards are sent to. Required.
+- `--orch` — the coordinator URL (e.g. `http://localhost:8787` for a local test,
+  or the deployed coordinator address). Defaults to `http://localhost:8787`, or
+  the `XYNQ_ORCH` environment variable.
+- `--models` — which model aliases to serve (`jaguar`, `qwen-3.5-27b`,
+  `supergemma-4-26b`). Defaults to `jaguar`.
+- `--max-vram` — optional cap (MB) on how much VRAM the worker may use.
 
-## Option B — browser (zero install)
+On start it fingerprints your GPU, joins the coordinator, makes sure the model is
+present in Ollama, and begins serving. Leave it running; the connection
+reconnects automatically if it drops.
 
-Open the **Contribute** page on the site and press *Start*. A compact model loads
-into the tab over WebGPU and the tab becomes a node for as long as it stays open.
-Closing it cleanly removes you from the pool. Great for laptops and quick tests.
+You can confirm you're connected by checking the coordinator's live stats:
+
+```bash
+curl <COORDINATOR_URL>/stats
+```
+
+Your worker id and wallet will appear in the `workers` array, and the public site
+reflects the total number of connected workers.
+
+## Model aliases
+
+| Alias              | Runs locally as (Ollama) |
+| ------------------ | ------------------------ |
+| `jaguar`           | `llama3.1:8b`            |
+| `qwen-3.5-27b`     | `qwen2.5:32b`            |
+| `supergemma-4-26b` | `gemma2:27b`             |
 
 ## What you earn, and when
 
-Work is measured in **tokens served** and settled once per **6-hour epoch**. At
-the epoch boundary the keeper reads the anonymous token tally and pays each
-contributor their share in $XYNQ.
+Work is measured in **tokens served**. The coordinator credits each completed
+job's tokens to the serving worker and records them in a per-worker ledger keyed
+by UTC-day epoch (`lib/db.ts`).
 
-Payouts are gated on reliability: the network constantly checks that nodes are
-doing real work (see [Architecture → anti-cheat](./architecture.md)). A node
-whose reliability dips below the bar simply earns nothing until it recovers — no
-bans, no appeals, just "do the work to get paid."
+During the MVP, the operator reads that ledger and settles balances **manually in
+USDC on Solana** to each worker's wallet. The automated on-chain keeper that will
+do this every epoch is in `lib/keeper/` and is not yet live.
+
+Payouts are gated on reliability. The coordinator continuously checks that nodes
+are doing real work (canary probes, throughput sanity — see
+[Architecture → anti-cheat](./architecture.md)). A node whose reliability drops
+below the bar simply stops being scheduled and stops earning until it recovers.
 
 | | |
 | ------------------ | -------------------------------------- |
 | Unit of credit     | tokens served                          |
-| Settlement cadence | every 6 hours                          |
-| Reward asset       | $XYNQ                                   |
+| Accounting cadence | per UTC-day epoch                      |
+| Reward asset       | USDC (Solana)                          |
+| Settlement (MVP)   | manual, by the operator, from the ledger |
 | Payout gate        | reliability above threshold            |
 
-## Good to know
+## Privacy, honestly
 
-- Nothing about a prompt is visible to you as a contributor, and nothing is
-  written to disk — you receive a shard and activations, compute, and return
-  tokens.
-- You can cap how much VRAM the worker may touch with `--max-vram`, or restrict
-  which models it will serve with `--models`.
+In the current MVP a worker runs the **whole** model for a request, so the node
+that serves your job does process the prompt it was given. The pipeline-sharding
+design in [Architecture](./architecture.md) — where a node only ever holds a band
+of layers and sees activations rather than raw text — is the direction this is
+headed, but it is not what runs today. We would rather state that plainly than
+imply a privacy guarantee the MVP does not yet provide.

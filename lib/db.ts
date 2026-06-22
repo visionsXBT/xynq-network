@@ -58,3 +58,10 @@ export function epochLedger(epoch: number): { worker_id: string; tokens: number 
     .prepare(`SELECT worker_id, tokens FROM ledger WHERE epoch = ?`)
     .all(epoch) as { worker_id: string; tokens: number }[];
 }
+
+/** Lifetime tokens credited per worker across all epochs (for settlement). */
+export function workerTotals(): { worker_id: string; tokens: number }[] {
+  return get()
+    .prepare(`SELECT worker_id, SUM(tokens) AS tokens FROM ledger GROUP BY worker_id ORDER BY tokens DESC`)
+    .all() as { worker_id: string; tokens: number }[];
+}

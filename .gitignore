@@ -9,6 +9,9 @@
 /out/
 next-env.d.ts
 
+# typescript build info
+*.tsbuildinfo
+
 # production
 /build
 /dist

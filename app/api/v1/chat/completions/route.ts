@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!body.stream) {
-    const text = await streamJob(job.id).then(collect);
+    const text = await collect(streamJob(job.id));
     return Response.json(buildCompletion(model.id, text));
   }
 

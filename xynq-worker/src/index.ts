@@ -23,7 +23,7 @@ function parseArgs(argv: string[]): Args {
   }
   return {
     wallet,
-    orch: get("--orch") ?? "wss://xynq.ai/ws",
+    orch: get("--orch") ?? process.env.XYNQ_ORCH ?? "http://localhost:8787",
     models: get("--models")?.split(","),
     maxVram: get("--max-vram") ? Number(get("--max-vram")) : undefined,
   };
@@ -38,6 +38,7 @@ async function fingerprint(args: Args): Promise<WorkerHello> {
   );
   return {
     id: makeWorkerId(args.wallet),
+    wallet: args.wallet,
     kind: "native",
     models: args.models ?? ["jaguar"],
     vramMb,

@@ -2,7 +2,12 @@ import type { Job, JobSpec, WorkerInfo } from "@/types";
 import { WorkerRegistry } from "./registry";
 import { planShards } from "./sharding";
 import { pickBest, type Candidate } from "./scheduler";
-import { recordJobStart, recordJobTokens } from "@/lib/db";
+import { recordJobStart, recordJobTokens, creditWorker } from "@/lib/db";
+
+/** Reward epoch = whole UTC days since the Unix epoch. */
+export function currentEpoch(): number {
+  return Math.floor(Date.now() / 86_400_000);
+}
 
 /**
  * The orchestrator is the brain of the mesh. It accepts jobs from the web/API
@@ -17,9 +22,18 @@ class Orchestrator {
   private jobs = new Map<string, Job>();
   private streams = new Map<string, AsyncQueue<string>>();
   private dispatchHook: ((job: Job) => void) | null = null;
+  // Live (in-memory) per-worker token tally for /stats and settlement display.
+  private workerTokens = new Map<string, number>();
+  // Tokens produced per in-flight job, flushed to the ledger on completion.
+  private tokensByJob = new Map<string, number>();
 
   onDispatch(fn: (job: Job) => void) {
     this.dispatchHook = fn;
+  }
+
+  /** Lifetime tokens served per worker id (since process start). */
+  earnings(): Record<string, number> {
+    return Object.fromEntries(this.workerTokens);
   }
 
   async enqueue(spec: JobSpec): Promise<string> {
@@ -36,6 +50,7 @@ class Orchestrator {
     };
     this.jobs.set(id, job);
     this.streams.set(id, new AsyncQueue<string>());
+    this.tokensByJob.set(id, 0);
     recordJobStart(id, spec.model, shards.length);
 
     if (shards.length) this.dispatchHook?.(job);
@@ -45,19 +60,44 @@ class Orchestrator {
   /** Workers pipe tokens here; subscribers receive them in order. */
   ingestToken(jobId: string, delta: string) {
     recordJobTokens(jobId, 1);
+    this.tokensByJob.set(jobId, (this.tokensByJob.get(jobId) ?? 0) + 1);
     this.streams.get(jobId)?.push(delta);
   }
 
   finish(jobId: string) {
     const job = this.jobs.get(jobId);
     if (job) job.state = "done";
+    this.creditJob(jobId);
     this.streams.get(jobId)?.close();
   }
 
   fail(jobId: string, _message: string) {
     const job = this.jobs.get(jobId);
     if (job) job.state = "failed";
+    // Credit whatever was produced before the failure so partial work is paid.
+    this.creditJob(jobId);
     this.streams.get(jobId)?.close();
+  }
+
+  /**
+   * Attribute a completed job's tokens to the worker(s) that served it, both in
+   * memory (for /stats) and in the durable ledger (for USDC settlement). The
+   * operator reads the ledger to pay contributors.
+   */
+  private creditJob(jobId: string) {
+    const job = this.jobs.get(jobId);
+    const tokens = this.tokensByJob.get(jobId) ?? 0;
+    this.tokensByJob.delete(jobId);
+    if (!job || tokens <= 0) return;
+    const epoch = currentEpoch();
+    for (const shard of job.shards) {
+      this.workerTokens.set(shard.workerId, (this.workerTokens.get(shard.workerId) ?? 0) + tokens);
+      try {
+        creditWorker(shard.workerId, epoch, tokens);
+      } catch {
+        // ledger persistence is best-effort; in-memory tally still holds
+      }
+    }
   }
 
   async *subscribe(jobId: string): AsyncGenerator<string> {

@@ -3,6 +3,7 @@
 
 export interface WorkerHello {
   id: string;
+  wallet: string; // Solana address used to settle this worker's rewards
   kind: "browser" | "native";
   models: string[];
   vramMb: number;
