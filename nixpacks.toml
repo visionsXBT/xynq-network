@@ -6,8 +6,9 @@
 nixPkgs = ["nodejs_20", "python3", "gcc"]
 
 [phases.install]
-# --include=dev ensures tsx (the runtime) is installed even when NODE_ENV=production
-cmds = ["npm ci --include=dev"]
+# npm install (not ci) so a cross-platform optional dep mismatch in the lockfile
+# (e.g. utf-8-validate) can't block the build. --include=dev keeps tsx (runtime).
+cmds = ["npm install --include=dev --no-audit --no-fund"]
 
 [phases.build]
 cmds = ["echo 'no build step — coordinator runs via tsx'"]
