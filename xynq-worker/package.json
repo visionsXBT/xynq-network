@@ -1,5 +1,5 @@
 {
-  "name": "@xynq/worker",
+  "name": "@xynqai/worker",
   "version": "0.4.2",
   "description": "XYNQ contributor worker — serve inference from your idle GPU and earn USDC.",
   "bin": {
