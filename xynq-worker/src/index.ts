@@ -2,7 +2,7 @@
 import { io } from "socket.io-client";
 import si from "systeminformation";
 import { makeWorkerId, type FromServer, type ToServer, type WorkerHello } from "./protocol.js";
-import { serveChat, ensureModelPulled } from "./native.js";
+import { serveChat, ensureModelPulled, ollamaUp } from "./native.js";
 
 // Production coordinator. Replace with your Railway domain before publishing,
 // or override at runtime with --orch / XYNQ_ORCH.
@@ -61,9 +61,23 @@ function estimateTflops(vramMb: number): number {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+
+  // Preflight: a worker without a reachable Ollama can't serve anything, so
+  // refuse to connect rather than register as online and fail every job.
+  if (!(await ollamaUp())) {
+    const host = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434";
+    console.error(`\n[worker] Ollama is not reachable at ${host}.`);
+    console.error("This worker serves inference through Ollama, so it must be running first.\n");
+    console.error("  1. Install it:  https://ollama.com/download");
+    console.error("  2. Start it:    ollama serve");
+    console.error("  3. Re-run this command.\n");
+    process.exit(1);
+  }
+
   const hello = await fingerprint(args);
   console.log(`[worker] ${hello.id} — ${hello.vramMb}MB VRAM, models: ${hello.models.join(", ")}`);
 
+  console.log("[worker] preparing models (first run downloads them, can take a while)…");
   for (const m of hello.models) await ensureModelPulled(m).catch(() => {});
 
   const socket = io(args.orch, { transports: ["websocket"] });

@@ -43,6 +43,16 @@ function mapModel(model: string): string {
   }
 }
 
+/** Returns true if a local Ollama server is reachable. */
+export async function ollamaUp(): Promise<boolean> {
+  try {
+    await ollama.list();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureModelPulled(model: string): Promise<void> {
   const tag = mapModel(model);
   try {
