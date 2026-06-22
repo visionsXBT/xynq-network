@@ -26,7 +26,7 @@
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.95.4",
     "better-sqlite3": "^11.7.0",
-    "next": "16.0.1",
+    "next": "^16.2.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "socket.io": "^4.8.1",
