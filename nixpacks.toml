@@ -1,12 +1,16 @@
-# Railway / Nixpacks build configuration for the XYNQ web + orchestrator.
+# Railway / Nixpacks build for the XYNQ orchestrator (coordinator).
+# The coordinator runs TypeScript directly via tsx, so there is no compile step.
+# python3 + gcc are present so better-sqlite3 can build native bindings if no
+# prebuilt binary is available for the platform.
 [phases.setup]
 nixPkgs = ["nodejs_20", "python3", "gcc"]
 
 [phases.install]
-cmds = ["npm ci"]
+# --include=dev ensures tsx (the runtime) is installed even when NODE_ENV=production
+cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["echo 'no build step — coordinator runs via tsx'"]
 
 [start]
-cmd = "npm run dev:all"
+cmd = "npm run start:server"

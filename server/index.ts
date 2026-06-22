@@ -18,7 +18,8 @@ import { resolveModel } from "@/lib/models";
 import { workerTotals } from "@/lib/db";
 import type { WorkerMessage, ServerMessage, WorkerInfo, ChatJobSpec } from "@/types";
 
-const PORT = Number(process.env.ORCHESTRATOR_WS_PORT ?? 8787);
+// Railway (and most PaaS) inject PORT; fall back to a fixed port locally.
+const PORT = Number(process.env.PORT ?? process.env.ORCHESTRATOR_WS_PORT ?? 8787);
 const SECRET = process.env.INTERNAL_API_SECRET ?? "";
 // Optional: lets /stats show an estimated USDC amount owed per worker.
 const USDC_PER_1K_TOKENS = Number(process.env.USDC_PER_1K_TOKENS ?? 0);
