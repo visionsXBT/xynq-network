@@ -80,12 +80,22 @@ async function main() {
   console.log("[worker] preparing models (first run downloads them, can take a while)…");
   for (const m of hello.models) await ensureModelPulled(m).catch(() => {});
 
-  const socket = io(args.orch, { transports: ["websocket"] });
+  console.log(`[worker] connecting to coordinator at ${args.orch} …`);
+  const socket = io(args.orch, { transports: ["websocket"], reconnectionAttempts: Infinity });
   const send = (m: ToServer) => socket.emit("worker", m);
 
+  let announced = false;
   socket.on("connect", () => {
+    announced = true;
+    console.log(`[worker] connected — online as ${hello.id}. Waiting for jobs (Ctrl+C to stop).`);
     send({ t: "hello", info: hello });
     setInterval(() => send({ t: "heartbeat", loadPct: idleLoad() }), 10_000);
+  });
+
+  socket.on("connect_error", (err) => {
+    if (!announced) {
+      console.error(`[worker] cannot reach coordinator at ${args.orch}: ${err.message} — retrying…`);
+    }
   });
 
   socket.on("server", async (msg: FromServer) => {
