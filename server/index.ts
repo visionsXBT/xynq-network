@@ -24,6 +24,52 @@ const SECRET = process.env.INTERNAL_API_SECRET ?? "";
 // Optional: lets /stats show an estimated USDC amount owed per worker.
 const USDC_PER_1K_TOKENS = Number(process.env.USDC_PER_1K_TOKENS ?? 0);
 
+// Billing: when XYNQ_API_BASE + INTERNAL_API_SECRET are set, /v1/chat requires a
+// valid xynq_sk_ key and meters token usage against the account's credit balance
+// (same free allowance + USDC credits as the hosted API). Unset = open/keyless.
+const BILLING_BASE = (process.env.XYNQ_API_BASE ?? "").replace(/\/$/, "");
+const BILLING_ON = Boolean(BILLING_BASE && SECRET);
+
+type AuthResult = { ok: true } | { ok: false; code: number; error: string };
+
+/** Ask the XYNQ account backend whether this key may run a job right now. */
+async function authorizeKey(key: string): Promise<AuthResult> {
+  if (!BILLING_ON) return { ok: true };
+  if (!key) return { ok: false, code: 401, error: 'Missing API key. Pass "Authorization: Bearer xynq_sk_...".' };
+  try {
+    const r = await fetch(`${BILLING_BASE}/internal/authorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": SECRET },
+      body: JSON.stringify({ key }),
+    });
+    if (r.ok) return { ok: true };
+    let error = `Authorization failed (${r.status}).`;
+    try {
+      error = ((await r.json()) as { error?: string }).error || error;
+    } catch {
+      /* keep default */
+    }
+    return { ok: false, code: r.status, error };
+  } catch {
+    // Fail closed: if we can't confirm the account, don't burn worker time.
+    return { ok: false, code: 503, error: "Billing service is unreachable — try again shortly." };
+  }
+}
+
+/** Report token usage so the account backend can deduct credits. Best-effort. */
+async function meterKey(key: string, inputTokens: number, outputTokens: number): Promise<void> {
+  if (!BILLING_ON || !key) return;
+  try {
+    await fetch(`${BILLING_BASE}/internal/meter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": SECRET },
+      body: JSON.stringify({ key, inputTokens, outputTokens }),
+    });
+  } catch {
+    /* metering is best-effort; never block the response on it */
+  }
+}
+
 const orch = getOrchestrator();
 
 // ---------- HTTP API ----------
@@ -113,6 +159,13 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
         return sendJson(res, 400, { error: 'A non-empty "messages" array is required.' });
       }
 
+      // Authorize the API key (no-op when billing is disabled) before doing work.
+      const authHeader = String(req.headers["authorization"] ?? "");
+      const keyMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+      const apiKey = keyMatch ? keyMatch[1].trim() : "";
+      const auth = await authorizeKey(apiKey);
+      if (!auth.ok) return sendJson(res, auth.code, { error: auth.error });
+
       const resolved = resolveModel(model);
       if (!resolved) return sendJson(res, 400, { error: `Unknown model: ${model}` });
       // Require live capacity before accepting — don't queue into the void.
@@ -128,13 +181,24 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       };
       const jobId = await orch.enqueue(spec);
 
+      // Rough input-token estimate (~4 chars/token); output tokens counted live.
+      const inputChars = messages.reduce(
+        (n: number, m: { content?: unknown }) => n + (typeof m?.content === "string" ? m.content.length : 0),
+        0
+      );
+      const inputTokens = Math.ceil(inputChars / 4);
+      let outputTokens = 0;
+
       cors(res);
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.statusCode = 200;
       for await (const delta of orch.subscribe(jobId)) {
+        outputTokens++;
         res.write(delta);
       }
-      return res.end();
+      res.end();
+      await meterKey(apiKey, inputTokens, outputTokens);
+      return;
     } catch (err) {
       return sendJson(res, 500, { error: String(err) });
     }
@@ -217,5 +281,6 @@ setInterval(() => {
 
 http.listen(PORT, () => {
   console.log(`[orchestrator] http+ws listening on :${PORT} (secret ${SECRET ? "set" : "MISSING"})`);
+  console.log(`[orchestrator] billing: ${BILLING_ON ? `ON → ${BILLING_BASE}` : "OFF (keyless)"}`);
   console.log(`[orchestrator] GET /stats · GET /healthz · POST /v1/chat`);
 });
