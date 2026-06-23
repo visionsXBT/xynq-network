@@ -102,7 +102,12 @@ async function main() {
     if (msg.t === "dispatch") {
       const spec = msg.spec as { kind: string; model: string; messages?: { role: string; content: string }[] };
       if (spec.kind === "chat" && spec.messages) {
-        await serveChat(msg.jobId, spec.model, spec.messages, send);
+        console.log(`[worker] job ${msg.jobId}: ${spec.model} — generating…`);
+        const t0 = Date.now();
+        const n = await serveChat(msg.jobId, spec.model, spec.messages, send);
+        const secs = (Date.now() - t0) / 1000;
+        const rate = secs > 0 ? (n / secs).toFixed(1) : "—";
+        console.log(`[worker] job ${msg.jobId}: done — ${n} tokens in ${secs.toFixed(1)}s (${rate} tok/s)`);
       }
     } else if (msg.t === "probe") {
       // deterministic canary response

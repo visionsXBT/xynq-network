@@ -12,7 +12,8 @@ export async function serveChat(
   model: string,
   messages: { role: string; content: string }[],
   send: (m: ToServer) => void
-): Promise<void> {
+): Promise<number> {
+  let tokens = 0;
   try {
     const stream = await ollama.chat({
       model: mapModel(model),
@@ -21,12 +22,16 @@ export async function serveChat(
     });
     for await (const part of stream) {
       const delta = part.message?.content ?? "";
-      if (delta) send({ t: "token", jobId, delta });
+      if (delta) {
+        tokens++;
+        send({ t: "token", jobId, delta });
+      }
     }
     send({ t: "done", jobId });
   } catch (err) {
     send({ t: "error", jobId, message: String(err) });
   }
+  return tokens;
 }
 
 /** Map XYNQ model aliases to local Ollama tags. */
