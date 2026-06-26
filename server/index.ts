@@ -70,6 +70,34 @@ async function meterKey(key: string, inputTokens: number, outputTokens: number):
   }
 }
 
+const stakeCache = new Map<string, { boost: number; exp: number }>();
+const STAKE_CACHE_TTL_MS = 15 * 60_000;
+
+/** Fetch $XYNQ stake boost for a worker wallet from the XYNQ account backend. */
+async function fetchStakeBoost(wallet: string): Promise<number> {
+  if (!BILLING_ON || !wallet) return 0;
+  const cached = stakeCache.get(wallet);
+  if (cached && cached.exp > Date.now()) return cached.boost;
+  try {
+    const r = await fetch(
+      `${BILLING_BASE}/internal/stake-boost?wallet=${encodeURIComponent(wallet)}`,
+      { headers: { "x-internal-secret": SECRET } }
+    );
+    if (!r.ok) return 0;
+    const data = (await r.json()) as { workerBoost?: number };
+    const boost = Number(data.workerBoost) || 0;
+    stakeCache.set(wallet, { boost, exp: Date.now() + STAKE_CACHE_TTL_MS });
+    return boost;
+  } catch {
+    return 0;
+  }
+}
+
+async function applyWorkerStakeBoost(workerId: string, wallet: string): Promise<void> {
+  const boost = await fetchStakeBoost(wallet);
+  orch.registry.touch(workerId, { stakeBoost: boost });
+}
+
 const orch = getOrchestrator();
 
 // ---------- HTTP API ----------
@@ -230,15 +258,21 @@ io.on("connection", (socket) => {
           latencyMs: 80,
           throughputTps: 30,
           reliability: 0.9,
+          stakeBoost: 0,
           online: true,
           lastSeen: Date.now(),
         };
         orch.registry.upsert(info);
         console.log(`[orchestrator] worker online: ${info.id} (${info.wallet}) — ${info.models.join(", ")}`);
+        void applyWorkerStakeBoost(info.id, info.wallet);
         break;
       }
       case "heartbeat": {
-        if (workerId) orch.registry.touch(workerId, {});
+        if (workerId) {
+          orch.registry.touch(workerId, {});
+          const w = orch.registry.online().find((x) => x.id === workerId);
+          if (w) void applyWorkerStakeBoost(workerId, w.wallet);
+        }
         break;
       }
       case "token": {

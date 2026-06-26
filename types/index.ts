@@ -49,6 +49,7 @@ export interface WorkerInfo {
   latencyMs: number;
   throughputTps: number;
   reliability: number; // 0..1
+  stakeBoost?: number; // 0..0.25 dispatch priority from $XYNQ holdings
   online: boolean;
   lastSeen: number;
 }

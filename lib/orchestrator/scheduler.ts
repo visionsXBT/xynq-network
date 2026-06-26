@@ -13,19 +13,22 @@ export interface Candidate extends WorkerInfo {
 const W_THROUGHPUT = 1.0;
 const W_LATENCY = 0.6;
 const W_RELIABILITY = 1.4;
+const W_STAKE = 0.8;
 const LOAD_SOFT_CAP = 0.85;
 
 export function scoreWorker(w: Candidate): number {
   const throughput = w.throughputTps / 50; // normalize around ~50 tps
   const latency = 1 / (1 + w.latencyMs / 100);
   const reliability = w.reliability;
+  const stake = w.stakeBoost ?? 0;
   const loadPenalty = w.loadPct > LOAD_SOFT_CAP ? (w.loadPct - LOAD_SOFT_CAP) * 4 : 0;
   const jitter = Math.random() * 0.05;
 
   return (
     W_THROUGHPUT * throughput +
     W_LATENCY * latency +
-    W_RELIABILITY * reliability -
+    W_RELIABILITY * reliability +
+    W_STAKE * stake -
     loadPenalty +
     jitter
   );
